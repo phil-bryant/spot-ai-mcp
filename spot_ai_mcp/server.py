@@ -4,8 +4,9 @@
 Read-only: only GET endpoints are exposed. Stdio transport, no third-party deps.
 
 API key resolution, in order:
-  1. SPOT_AI_API_KEY environment variable
-  2. 1psa (1Password service-account helper): 1psa -f spot.ai api_key
+  1. SPOT_AI_API_KEY environment variable (recommended)
+  2. An optional secret-helper command: SPOT_AI_OP_BIN -f SPOT_AI_OP_ITEM SPOT_AI_OP_FIELD
+     (defaults: 1psa -f spot.ai api_key — see https://github.com/phil-bryant/1psa)
 The key is fetched lazily on the first API call and cached for the process lifetime.
 """
 
@@ -16,6 +17,8 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+
+__version__ = "0.1.0"
 
 BASE_URL = "https://dev-api.spot.ai"
 OP_ITEM = os.environ.get("SPOT_AI_OP_ITEM", "spot.ai")
@@ -37,7 +40,10 @@ def get_api_key():
                 capture_output=True, text=True, timeout=60,
             )
         except FileNotFoundError:
-            raise RuntimeError(f"SPOT_AI_API_KEY is not set and '{OP_BIN}' is not installed")
+            raise RuntimeError(
+                f"No API key found: set the SPOT_AI_API_KEY environment variable "
+                f"(the secret-helper fallback '{OP_BIN}' is not installed)"
+            )
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"Timed out reading the key via {OP_BIN}")
         if proc.returncode != 0:
@@ -68,7 +74,7 @@ def api_get(path, query=None):
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {get_api_key()}",
         "Accept": "application/json",
-        "User-Agent": "spot-ai-mcp/0.1.0",
+        "User-Agent": f"spot-ai-mcp/{__version__}",
     })
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
@@ -217,7 +223,7 @@ def handle(msg):
             "result": {
                 "protocolVersion": msg.get("params", {}).get("protocolVersion", "2024-11-05"),
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "spot-ai", "version": "0.1.0"},
+                "serverInfo": {"name": "spot-ai", "version": __version__},
             },
         }
     if method == "tools/list":
