@@ -1,9 +1,46 @@
+<!-- mcp-name: io.github.phil-bryant/spot-ai-mcp -->
+
 # spot-ai-mcp
 
-MCP server for the [Spot AI](https://developers.spot.ai) camera / video-intelligence
-REST API. Single-file, stdio transport, no dependencies beyond Python 3.
+**Unofficial community MCP server for the [Spot AI](https://developers.spot.ai)
+camera / video-intelligence REST API. Not affiliated with or endorsed by Spot AI.**
 
-Read-only by design: only GET endpoints are exposed.
+Single-file, stdio transport, no dependencies beyond Python 3.9+.
+Read-only by design: only GET endpoints are exposed, so it can browse cameras and
+intelligence data but can never modify anything in your Spot AI org.
+
+## Install
+
+```bash
+uvx spot-ai-mcp
+```
+
+or `pip install spot-ai-mcp`, or run straight from a checkout with
+`python3 -m spot_ai_mcp` (no dependencies to install).
+
+Register with Claude Code:
+
+```bash
+claude mcp add spot-ai -s user -e SPOT_AI_API_KEY=YOUR_KEY -- uvx spot-ai-mcp
+```
+
+## API key
+
+Create a key in the Spot AI dashboard's API settings, then **add an authorization**
+(a role, e.g. Owner, optionally scoped) on the key's settings page. A key without a
+role returns empty lists from every resource endpoint while `get_camera_count` still
+works — that's the tell.
+
+The server resolves the key lazily on the first API call:
+
+1. `SPOT_AI_API_KEY` environment variable — the normal path.
+2. Optionally, a secret-helper command, so the key never sits in an env var or config:
+   the server runs `$SPOT_AI_OP_BIN -f $SPOT_AI_OP_ITEM $SPOT_AI_OP_FIELD`
+   (defaults `1psa -f spot.ai api_key`, per [1psa](https://github.com/phil-bryant/1psa),
+   a vault-scoped 1Password service-account CLI). Point these at any command with the
+   same flag convention.
+
+The key is never written to disk or config by this server.
 
 ## Tools
 
@@ -19,26 +56,6 @@ Read-only by design: only GET endpoints are exposed.
 | `get_lpr_report` | License-plate-recognition report for an LPR camera |
 | `spot_api_get` | Escape hatch: GET any documented `/v1/` or `/v2/` path |
 
-## API key
-
-Resolved lazily on the first API call, in order:
-
-1. `SPOT_AI_API_KEY` environment variable
-2. [`1psa`](https://github.com/phil-bryant/1psa): `1psa -f spot.ai api_key`
-
-The key is never written to disk or config. Override the item/field/binary with
-`SPOT_AI_OP_ITEM`, `SPOT_AI_OP_FIELD`, `SPOT_AI_OP_BIN`.
-
-The Spot AI key itself must have an **authorization** (role, e.g. Owner, optionally
-scoped) added on its settings page in the Spot AI dashboard — a key without a role
-returns empty lists from every resource endpoint while `get_camera_count` still works.
-
-## Register with Claude Code
-
-```bash
-claude mcp add spot-ai -s user -- python3 /path/to/spot-ai-mcp/server.py
-```
-
 ## Notes
 
 - Base URL is `https://dev-api.spot.ai`, auth is `Authorization: Bearer <key>`.
@@ -46,3 +63,7 @@ claude mcp add spot-ai -s user -- python3 /path/to/spot-ai-mcp/server.py
   the server sends `User-Agent: spot-ai-mcp/<version>`.
 - Endpoint index: <https://developers.spot.ai/llms.txt> (append `.md` to any docs URL
   for markdown, including the OpenAPI definition per endpoint).
+
+## License
+
+MIT
