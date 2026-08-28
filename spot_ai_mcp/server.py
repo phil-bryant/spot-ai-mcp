@@ -18,7 +18,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
+
+# Legacy = initialize-handshake revisions we implement; modern = per-request-_meta
+# revisions (2026-07-28 and later). This server is dual-era per
+# https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
+LEGACY_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+MODERN_VERSIONS = ("2026-07-28",)
 
 BASE_URL = "https://dev-api.spot.ai"
 OP_ITEM = os.environ.get("SPOT_AI_OP_ITEM", "spot.ai")
@@ -217,11 +223,39 @@ def call_tool(name, args):
 def handle(msg):
     method = msg.get("method")
     msg_id = msg.get("id")
-    if method == "initialize":
+    params = msg.get("params", {})
+
+    # Modern (2026-07-28+) requests declare their protocol version per request.
+    # Reject versions we don't implement with UnsupportedProtocolVersionError.
+    requested = params.get("_meta", {}).get("io.modelcontextprotocol/protocolVersion")
+    if requested and requested not in MODERN_VERSIONS + LEGACY_VERSIONS and msg_id is not None:
+        return {
+            "jsonrpc": "2.0", "id": msg_id,
+            "error": {
+                "code": -32022,
+                "message": "Unsupported protocol version",
+                "data": {"supported": list(MODERN_VERSIONS), "requested": requested},
+            },
+        }
+
+    if method == "server/discover":
         return {
             "jsonrpc": "2.0", "id": msg_id,
             "result": {
-                "protocolVersion": msg.get("params", {}).get("protocolVersion", "2024-11-05"),
+                "resultType": "complete",
+                "supportedVersions": list(MODERN_VERSIONS),
+                "capabilities": {"tools": {}},
+                "_meta": {
+                    "io.modelcontextprotocol/serverInfo": {"name": "spot-ai", "version": __version__},
+                },
+            },
+        }
+    if method == "initialize":
+        client_version = params.get("protocolVersion")
+        return {
+            "jsonrpc": "2.0", "id": msg_id,
+            "result": {
+                "protocolVersion": client_version if client_version in LEGACY_VERSIONS else LEGACY_VERSIONS[0],
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "spot-ai", "version": __version__},
             },
@@ -229,7 +263,6 @@ def handle(msg):
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": TOOLS}}
     if method == "tools/call":
-        params = msg.get("params", {})
         try:
             result = call_tool(params.get("name"), params.get("arguments") or {})
             text = json.dumps(result, indent=2, default=str)

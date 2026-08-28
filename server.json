@@ -1,17 +1,18 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.phil-bryant/spot-ai-mcp",
+  "title": "Spot AI MCP (Unofficial)",
   "description": "Unofficial community MCP server for the Spot AI camera and video-intelligence REST API. Read-only.",
   "repository": {
     "url": "https://github.com/phil-bryant/spot-ai-mcp",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "spot-ai-mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },

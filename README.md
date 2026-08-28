@@ -58,6 +58,9 @@ The key is never written to disk or config by this server.
 
 ## Notes
 
+- Dual-era MCP server: speaks both the modern per-request protocol
+  (`server/discover`, spec 2026-07-28) and the legacy `initialize` handshake
+  (2024-11-05 through 2025-06-18), so old and new clients both work.
 - Base URL is `https://dev-api.spot.ai`, auth is `Authorization: Bearer <key>`.
 - Cloudflare in front of the API rejects Python's default user agent with error 1010;
   the server sends `User-Agent: spot-ai-mcp/<version>`.
