@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """MCP server for the Spot AI camera/intelligence REST API (https://developers.spot.ai).
 
-Read-only: only GET endpoints are exposed. Stdio transport, no third-party deps.
+Read-only: no endpoint that modifies the Spot AI org is exposed. All tools wrap GET
+endpoints except get_live_stream_urls, which wraps POST /v1/cameras/live — a read-like
+POST that only generates a viewing URL. Stdio transport, no third-party deps.
 
 API key resolution, in order:
   1. SPOT_AI_API_KEY environment variable (recommended)
@@ -18,7 +20,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Legacy = initialize-handshake revisions we implement; modern = per-request-_meta
 # revisions (2026-07-28 and later). This server is dual-era per
@@ -62,7 +64,7 @@ def get_api_key():
     return key
 
 
-def api_get(path, query=None):
+def api_request(path, query=None, body=None):
     if not path.startswith("/"):
         path = "/" + path
     url = BASE_URL + path
@@ -77,21 +79,26 @@ def api_get(path, query=None):
                 pairs.append((k, str(v)))
         if pairs:
             url += "?" + urllib.parse.urlencode(pairs)
-    req = urllib.request.Request(url, headers={
+    headers = {
         "Authorization": f"Bearer {get_api_key()}",
         "Accept": "application/json",
         "User-Agent": f"spot-ai-mcp/{__version__}",
-    })
+    }
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            body = resp.read().decode("utf-8", "replace")
+            text = resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")[:2000]
-        raise RuntimeError(f"HTTP {e.code} from {path}: {body}")
+        text = e.read().decode("utf-8", "replace")[:2000]
+        raise RuntimeError(f"HTTP {e.code} from {path}: {text}")
     try:
-        return json.loads(body)
+        return json.loads(text)
     except ValueError:
-        return body
+        return text
 
 
 PAGINATION = {
@@ -169,6 +176,23 @@ TOOLS = [
         },
     },
     {
+        "name": "get_live_stream_urls",
+        "description": "Get a URL to a live stream of up to 4 cameras. Generates a viewing URL for the authenticated caller; modifies nothing.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "camera_ids": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "description": "Ids of the cameras to create live urls for (1 to 4)",
+                },
+            },
+            "required": ["camera_ids"],
+        },
+    },
+    {
         "name": "spot_api_get",
         "description": "Escape hatch: perform a GET against any documented Spot AI API path (https://developers.spot.ai/llms.txt lists them). Example path: /v1/integrations. Only GET is supported; this server is read-only.",
         "inputSchema": {
@@ -182,20 +206,25 @@ TOOLS = [
     },
 ]
 
+# The spec defaults are readOnlyHint=false / destructiveHint=true, so an unannotated
+# tool is presumed destructive; every tool here reads without modifying the org.
+for _tool in TOOLS:
+    _tool["annotations"] = {"readOnlyHint": True}
+
 
 def call_tool(name, args):
     if name == "list_locations":
-        return api_get("/v1/locations", {"limit": args.get("limit"), "cursor": args.get("cursor")})
+        return api_request("/v1/locations", {"limit": args.get("limit"), "cursor": args.get("cursor")})
     if name == "list_cameras":
-        return api_get("/v1/cameras", {"limit": args.get("limit"), "cursor": args.get("cursor")})
+        return api_request("/v1/cameras", {"limit": args.get("limit"), "cursor": args.get("cursor")})
     if name == "get_camera":
-        return api_get(f"/v1/cameras/{int(args['camera_id'])}")
+        return api_request(f"/v1/cameras/{int(args['camera_id'])}")
     if name == "get_camera_count":
-        return api_get("/v1/cameras/count")
+        return api_request("/v1/cameras/count")
     if name == "list_appliances":
-        return api_get("/v1/appliances", {"limit": args.get("limit"), "cursor": args.get("cursor")})
+        return api_request("/v1/appliances", {"limit": args.get("limit"), "cursor": args.get("cursor")})
     if name == "get_zones":
-        return api_get(f"/v1/cameras/{int(args['camera_id'])}/zones")
+        return api_request(f"/v1/cameras/{int(args['camera_id'])}/zones")
     if name == "get_intelligence":
         camera = int(args["camera_id"])
         metric = args["metric"]
@@ -209,14 +238,19 @@ def call_tool(name, args):
             "end_time": args.get("end_time"),
             "threshold": args.get("threshold"),
         }
-        return api_get(f"/v1/cameras/{camera}/intelligence/{entity}/{metric}", query)
+        return api_request(f"/v1/cameras/{camera}/intelligence/{entity}/{metric}", query)
     if name == "get_lpr_report":
-        return api_get(f"/v1/lpr/cameras/{int(args['camera_id'])}/report", args.get("query") or {})
+        return api_request(f"/v1/lpr/cameras/{int(args['camera_id'])}/report", args.get("query") or {})
+    if name == "get_live_stream_urls":
+        camera_ids = args["camera_ids"]
+        if not isinstance(camera_ids, list) or not 1 <= len(camera_ids) <= 4:
+            raise RuntimeError("camera_ids must be a list of 1 to 4 camera ids")
+        return api_request("/v1/cameras/live", body={"camera_ids": [int(c) for c in camera_ids]})
     if name == "spot_api_get":
         path = args["path"]
         if not path.lstrip("/").startswith(("v1/", "v2/")):
             raise RuntimeError("Path must start with /v1/ or /v2/")
-        return api_get(path, args.get("query") or {})
+        return api_request(path, args.get("query") or {})
     raise RuntimeError(f"Unknown tool '{name}'")
 
 
