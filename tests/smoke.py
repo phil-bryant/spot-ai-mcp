@@ -11,7 +11,7 @@ import sys
 EXPECTED_TOOLS = {
     "list_locations", "list_cameras", "get_camera", "get_camera_count",
     "list_appliances", "get_zones", "get_intelligence", "get_lpr_report",
-    "spot_api_get",
+    "get_live_stream_urls", "spot_api_get",
 }
 
 REQUESTS = [
@@ -53,6 +53,8 @@ def main():
 
     tools = {t["name"] for t in replies[2]["result"]["tools"]}
     assert tools == EXPECTED_TOOLS, f"tool mismatch: {tools ^ EXPECTED_TOOLS}"
+    for t in replies[2]["result"]["tools"]:
+        assert t.get("annotations") == {"readOnlyHint": True}, f"missing readOnlyHint: {t['name']}"
 
     err = replies[3]["error"]
     assert err["code"] == -32022 and err["data"]["supported"] == ["2026-07-28"], err

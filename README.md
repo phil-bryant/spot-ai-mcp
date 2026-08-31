@@ -6,8 +6,10 @@
 camera / video-intelligence REST API. Not affiliated with or endorsed by Spot AI.**
 
 Single-file, stdio transport, no dependencies beyond Python 3.9+.
-Read-only by design: only GET endpoints are exposed, so it can browse cameras and
-intelligence data but can never modify anything in your Spot AI org.
+Read-only by design: it can browse cameras and intelligence data but can never modify
+anything in your Spot AI org. Every tool wraps a GET endpoint except
+`get_live_stream_urls`, which wraps `POST /v1/cameras/live` — a read-like POST that
+only generates a viewing URL. All tools declare the `readOnlyHint: true` MCP annotation.
 
 ## Install
 
@@ -54,6 +56,7 @@ The key is never written to disk or config by this server.
 | `get_zones` | Zones defined on a camera |
 | `get_intelligence` | Counting / idle / presence events for people, vehicles, or forklifts over a date range |
 | `get_lpr_report` | License-plate-recognition report for an LPR camera |
+| `get_live_stream_urls` | Live-stream viewing URL for up to 4 cameras |
 | `spot_api_get` | Escape hatch: GET any documented `/v1/` or `/v2/` path |
 
 ## Notes
